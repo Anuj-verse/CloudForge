@@ -1,58 +1,151 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: 'dashboard' },
   { path: '/catalog', label: 'Service Catalog', icon: 'inventory_2' },
   { path: '/resources', label: 'Active Resources', icon: 'memory' },
+  { path: '/provision', label: 'Deploy', icon: 'rocket_launch' },
+  { path: '/docs', label: 'Documentation', icon: 'menu_book' },
+];
+
+const bottomItems = [
   { path: '/billing', label: 'Billing', icon: 'payments' },
   { path: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-export function Sidebar({ className = "" }) {
+export function Sidebar() {
+  const [expanded, setExpanded] = useState(false);
+  const location = useLocation();
+
   return (
-    <aside className={`h-screen w-72 flex-col fixed left-0 top-0 border-r-0 bg-[#0b1326] flex py-8 px-4 gap-y-6 z-50 ${className}`}>
-      <div className="px-4 mb-4">
-        <h1 className="text-[#adc6ff] font-bold tracking-tighter text-xl font-['Space_Grotesk'] uppercase">Cloud Operator</h1>
-        <p className="text-slate-500 text-[10px] font-['Space_Grotesk'] tracking-[0.2em] mt-1 uppercase">Quota: 85% Used</p>
+    <motion.aside
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      animate={{ width: expanded ? 240 : 72 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="h-screen fixed left-0 top-0 z-50 flex flex-col py-4 px-2 bg-bg-100/80 backdrop-blur-2xl border-r border-border"
+    >
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-3 mb-6 h-10">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center shrink-0 shadow-glow-sm">
+          <span className="text-white font-bold text-sm">CF</span>
+        </div>
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden whitespace-nowrap"
+            >
+              <span className="font-bold text-sm tracking-tight text-text">CloudForge</span>
+              <span className="block text-[10px] text-text-tertiary tracking-wider uppercase">Platform</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      <nav className="flex flex-col gap-y-1 flex-1">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              `px-4 py-2 flex items-center gap-3 font-['Inter'] text-sm tracking-tight font-['Space_Grotesk'] uppercase label-md transition-all duration-200 ease-in-out ${
-                isActive
-                  ? "text-[#adc6ff] bg-[#2d3449] rounded-lg font-bold border-l-4 border-[#adc6ff] scale-[0.98] active:opacity-80"
-                  : "text-slate-400 hover:text-white hover:bg-[#2d3449] rounded-lg"
-              }`
-            }
-          >
-            <span className="material-symbols-outlined">{item.icon}</span>
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
+      {/* Main Nav */}
+      <nav className="flex-1 flex flex-col gap-1">
+        {navItems.map((item) => {
+          const isActive = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
+          return (
+            <NavLink key={item.path} to={item.path} className="relative block">
+              <motion.div
+                whileHover={{ scale: 1.02, x: 2 }}
+                whileTap={{ scale: 0.97 }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${
+                  isActive ? 'text-accent-blue' : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-indicator"
+                    className="absolute inset-0 bg-accent-blue/8 rounded-xl border border-accent-blue/15"
+                    transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                  />
+                )}
+                <span className={`material-symbols-outlined text-[20px] relative z-10 shrink-0 ${isActive ? 'text-accent-blue' : ''}`} style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}>
+                  {item.icon}
+                </span>
+                <AnimatePresence>
+                  {expanded && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className={`text-[13px] font-medium relative z-10 whitespace-nowrap ${isActive ? 'text-accent-blue font-semibold' : ''}`}
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </NavLink>
+          );
+        })}
       </nav>
 
-      <div className="mt-auto pt-6 border-t border-white/5 flex flex-col gap-y-1">
-        <NavLink 
-            to="/provision"
-            className="w-full bg-primary-container text-on-primary-container py-3 rounded-lg font-label text-xs font-bold tracking-widest uppercase hover:opacity-90 active:scale-95 transition-all text-center mb-4 flex items-center justify-center gap-2"
-        >
-          <span className="material-symbols-outlined text-sm">add</span>
-          Deploy New Service
-        </NavLink>
-        <a className="text-slate-400 hover:text-white px-4 py-2 flex items-center gap-3 font-['Inter'] text-sm tracking-tight font-['Space_Grotesk'] uppercase label-md hover:bg-[#2d3449] rounded-lg transition-all duration-200 ease-in-out" href="#">
-          <span className="material-symbols-outlined">menu_book</span>
-          Documentation
-        </a>
-        <a className="text-slate-400 hover:text-white px-4 py-2 flex items-center gap-3 font-['Inter'] text-sm tracking-tight font-['Space_Grotesk'] uppercase label-md hover:bg-[#2d3449] rounded-lg transition-all duration-200 ease-in-out" href="#">
-          <span className="material-symbols-outlined">contact_support</span>
-          Support
-        </a>
+      {/* Divider */}
+      <div className="h-px bg-border mx-3 my-2" />
+
+      {/* Bottom Nav */}
+      <div className="flex flex-col gap-1">
+        {bottomItems.map((item) => {
+          const isActive = location.pathname.startsWith(item.path);
+          return (
+            <NavLink key={item.path} to={item.path} className="block">
+              <motion.div
+                whileHover={{ scale: 1.02, x: 2 }}
+                whileTap={{ scale: 0.97 }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
+                  isActive ? 'text-accent-blue bg-accent-blue/8' : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-hover'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
+                <AnimatePresence>
+                  {expanded && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="text-[13px] font-medium whitespace-nowrap"
+                    >
+                      {item.label}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </NavLink>
+          );
+        })}
+
+        {/* User Avatar */}
+        <div className="mt-2 px-2">
+          <div className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-surface-hover transition-colors cursor-pointer">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-green to-accent-blue shrink-0 flex items-center justify-center">
+              <span className="text-white text-xs font-bold">P</span>
+            </div>
+            <AnimatePresence>
+              {expanded && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="whitespace-nowrap overflow-hidden"
+                >
+                  <span className="text-[13px] font-medium text-text block leading-tight">Pranay</span>
+                  <span className="text-[11px] text-text-tertiary">Developer</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
-    </aside>
+    </motion.aside>
   );
 }
