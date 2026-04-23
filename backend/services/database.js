@@ -1,263 +1,231 @@
-const { createClient } = require('@supabase/supabase-js');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
+const path = require('path');
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL || 'https://qmmtsgyslngbnbvmrvgv.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+let dbInstance = null;
 
-if (!supabaseKey) {
-    console.warn('Warning: No Supabase key provided. Database operations will fail.');
+async function getDb() {
+  if (dbInstance) return dbInstance;
+  dbInstance = await open({
+    filename: path.join(__dirname, '..', 'data', 'cloudforge.db'),
+    driver: sqlite3.Database
+  });
+  return dbInstance;
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+async function initializeDatabase() {
+  const db = await getDb();
+  
+  // Create tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS resources (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Provisioning',
+      ip TEXT,
+      engine TEXT,
+      credentials TEXT,
+      environment TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
 
-// SQL to create tables (run this in Supabase SQL Editor)
-/*
--- Resources table
-CREATE TABLE IF NOT EXISTS resources (
-    id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(100) NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'Provisioning',
-    ip TEXT,
-    engine VARCHAR(100),
-    credentials JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    CREATE TABLE IF NOT EXISTS activity (
+      id TEXT PRIMARY KEY,
+      user_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      resource_name TEXT,
+      time TEXT,
+      type TEXT,
+      status TEXT,
+      icon TEXT,
+      color_class TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
 
--- Activity feed table
-CREATE TABLE IF NOT EXISTS activity (
-    id VARCHAR(255) PRIMARY KEY,
-    user_name VARCHAR(255) NOT NULL,
-    action VARCHAR(100) NOT NULL,
-    resource_name VARCHAR(255),
-    time VARCHAR(100),
-    type VARCHAR(100),
-    status VARCHAR(50),
-    icon VARCHAR(50),
-    color_class VARCHAR(50),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    CREATE TABLE IF NOT EXISTS stats (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      total_resources INTEGER DEFAULT 0,
+      total_resources_delta TEXT DEFAULT '+0 Since yesterday',
+      monthly_cost TEXT DEFAULT '$0.00',
+      monthly_cost_delta TEXT DEFAULT '0% projected',
+      system_health TEXT DEFAULT '100%'
+    );
 
--- Stats table (single row for global stats)
-CREATE TABLE IF NOT EXISTS stats (
-    id INTEGER PRIMARY KEY DEFAULT 1,
-    total_resources INTEGER DEFAULT 0,
-    total_resources_delta VARCHAR(100) DEFAULT '+0 Since yesterday',
-    monthly_cost VARCHAR(50) DEFAULT '$0.00',
-    monthly_cost_delta VARCHAR(100) DEFAULT '0% projected',
-    system_health VARCHAR(20) DEFAULT '100%'
-);
+    CREATE TABLE IF NOT EXISTS service_catalog (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      icon TEXT,
+      provider_logo TEXT,
+      tags TEXT,
+      color TEXT
+    );
+  `);
 
--- Initialize stats row
-INSERT INTO stats (id, total_resources, monthly_cost) 
-VALUES (1, 0, '$0.00') 
-ON CONFLICT (id) DO NOTHING;
+  // Initialize stats row
+  await db.run(`INSERT OR IGNORE INTO stats (id, total_resources, monthly_cost) VALUES (1, 0, '$0.00')`);
 
--- Service catalog table
-CREATE TABLE IF NOT EXISTS service_catalog (
-    id VARCHAR(50) PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    icon VARCHAR(50),
-    provider_logo TEXT,
-    tags JSONB,
-    color VARCHAR(20)
-);
+  // Seed service catalog
+  const catalogCount = await db.get('SELECT COUNT(*) as cnt FROM service_catalog');
+  if (catalogCount.cnt === 0) {
+    const awsLogo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/512px-Amazon_Web_Services_Logo.svg.png';
+    const azureLogo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Microsoft_Azure.svg/150px-Microsoft_Azure.svg.png';
+    
+    const items = [
+      ['rds-pg', 'Aurora PostgreSQL', 'High-performance managed relational database with automated backups, point-in-time recovery, and multi-AZ failover.', 'database', awsLogo, '["Managed","PostgreSQL 15","Multi-AZ"]', 'primary'],
+      ['ec2', 'EC2 Instance', 'Secure, resizable virtual computing capacity. Launch instances in minutes with your choice of OS and instance type.', 'dns', awsLogo, '["Compute","Auto-Scale","EBS"]', 'primary'],
+      ['s3', 'S3 Bucket', 'Object storage built to retrieve any amount of data from anywhere with 99.999999999% durability.', 'folder_zip', awsLogo, '["Storage","IA Support","Versioned"]', 'primary'],
+      ['redis', 'ElastiCache Redis', 'Fully managed in-memory data store for sub-millisecond response times and real-time caching at scale.', 'bolt', awsLogo, '["Cache","Cluster Mode","6.x"]', 'tertiary'],
+      ['lambda', 'Lambda Function', 'Run code without thinking about servers. Pay only for the compute time you consume. Scales automatically.', 'functions', awsLogo, '["Serverless","Python/Node","API Gateway"]', 'primary'],
+    ];
 
--- Seed service catalog
-INSERT INTO service_catalog (id, title, description, icon, provider_logo, tags, color) VALUES
-('rds-pg', 'RDS (PostgreSQL)', 'High-performance managed relational database with automated backups and scaling.', 'database', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBSsg4icExh1ZBTivDiXTv94hT3j3tzazT5FBfneEF5jHXicVJqrPUUKH4VBgZRBVJojV8E3403KPiDGNZ-iIXKD2cHk3ePpq5Bh3czlNYdwsUpVgw7JET-6z2oNxV-cNLCo_FldYUFhc35LcmVe9kgevi1ZhP9e2sKhuAhlvgKTYjURD7hlVT_SppPk59jUQcAVXHtcaqtxDWQMH0PO8nYZN8OdWQypnnyQvZgiYSd7VXa60U3pNn6zitQ2Hiakk0iHU03IQChPlNY', '["Managed", "PostgreSQL 15"]', 'primary'),
-('ec2', 'EC2 Instance', 'On-demand virtual computing power. Secure, resizable capacity for any workload.', 'dns', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBSsg4icExh1ZBTivDiXTv94hT3j3tzazT5FBfneEF5jHXicVJqrPUUKH4VBgZRBVJojV8E3403KPiDGNZ-iIXKD2cHk3ePpq5Bh3czlNYdwsUpVgw7JET-6z2oNxV-cNLCo_FldYUFhc35LcmVe9kgevi1ZhP9e2sKhuAhlvgKTYjURD7hlVT_SppPk59jUQcAVXHtcaqtxDWQMH0PO8nYZN8OdWQypnnyQvZgiYSd7VXa60U3pNn6zitQ2Hiakk0iHU03IQChPlNY', '["Compute", "T3.Large"]', 'primary'),
-('s3', 'S3 Bucket', 'Object storage built to retrieve any amount of data from anywhere.', 'folder_zip', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBSsg4icExh1ZBTivDiXTv94hT3j3tzazT5FBfneEF5jHXicVJqrPUUKH4VBgZRBVJojV8E3403KPiDGNZ-iIXKD2cHk3ePpq5Bh3czlNYdwsUpVgw7JET-6z2oNxV-cNLCo_FldYUFhc35LcmVe9kgevi1ZhP9e2sKhuAhlvgKTYjURD7hlVT_SppPk59jUQcAVXHtcaqtxDWQMH0PO8nYZN8OdWQypnnyQvZgiYSd7VXa60U3pNn6zitQ2Hiakk0iHU03IQChPlNY', '["Storage", "IA Support"]', 'primary'),
-('redis', 'Redis Cache', 'Fully managed, in-memory data store for accelerating application performance.', 'bolt', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBG_OkeW_nrGrxpfayadCMoYP1U7sjsRogDTTGnUzB9F8haKzocKnsZO3zXU_o_Sdac9k60GuFMOYxg82De2zwHp3RIuZz99Upf8xiB9K7TZMD2GWqoXS7KqIBOc4APbCUaFWmyH5o7lzin6G_KT4uJvzujy219vWTKLm02m8DL45e11ZAUJCx-QXl9Iyedf0qNhO4lUJhdrKxXd_FAZkGJ9OHK5ZepbL-KTGYEYVBQsvPtG3hCGrhdzk8dzNgbBGxLkA3GPygGwXXQ', '["Cache", "Azure Native"]', 'tertiary'),
-('lambda', 'Lambda Function', 'Run code without thinking about servers. Pay only for the compute time you consume.', 'functions', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBSsg4icExh1ZBTivDiXTv94hT3j3tzazT5FBfneEF5jHXicVJqrPUUKH4VBgZRBVJojV8E3403KPiDGNZ-iIXKD2cHk3ePpq5Bh3czlNYdwsUpVgw7JET-6z2oNxV-cNLCo_FldYUFhc35LcmVe9kgevi1ZhP9e2sKhuAhlvgKTYjURD7hlVT_SppPk59jUQcAVXHtcaqtxDWQMH0PO8nYZN8OdWQypnnyQvZgiYSd7VXa60U3pNn6zitQ2Hiakk0iHU03IQChPlNY', '["Serverless", "Python/Node"]', 'primary')
-ON CONFLICT (id) DO NOTHING;
-*/
+    const stmt = await db.prepare('INSERT OR IGNORE INTO service_catalog (id, title, description, icon, provider_logo, tags, color) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const item of items) {
+      await stmt.run(...item);
+    }
+    await stmt.finalize();
+    console.log('✅ Service catalog seeded with', items.length, 'items');
+  }
+
+  // Seed initial activity if empty
+  const actCount = await db.get('SELECT COUNT(*) as cnt FROM activity');
+  if (actCount.cnt === 0) {
+    const activities = [
+      ['act-1', 'System', 'initialized', 'CloudForge Platform', 'Just now', 'system', 'Active', 'cloud_done', 'tertiary'],
+      ['act-2', 'admin', 'configured', 'IAM Role Binding', '2 min ago', 'security', 'Completed', 'security', 'primary'],
+      ['act-3', 'System', 'health check passed for', 'us-east-1 region', '5 min ago', 'infra', 'Healthy', 'check_circle', 'tertiary'],
+    ];
+    const stmt = await db.prepare('INSERT OR IGNORE INTO activity (id, user_name, action, resource_name, time, type, status, icon, color_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const a of activities) { await stmt.run(...a); }
+    await stmt.finalize();
+  }
+
+  console.log('✅ Database initialized successfully');
+  return db;
+}
 
 // Database operations
-const db = {
-  // Resources
+const dbOps = {
   async getResources() {
-    const { data, error } = await supabase
-      .from('resources')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching resources:', error);
-      return [];
-    }
-    return data || [];
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM resources ORDER BY created_at DESC');
+    return rows.map(r => ({
+      ...r,
+      credentials: r.credentials ? JSON.parse(r.credentials) : null
+    }));
   },
 
   async getResource(id) {
-    const { data, error } = await supabase
-      .from('resources')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching resource:', error);
-      return null;
-    }
-    return data;
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM resources WHERE id = ?', id);
+    if (row && row.credentials) row.credentials = JSON.parse(row.credentials);
+    return row || null;
   },
 
   async createResource(resource) {
-    const { data, error } = await supabase
-      .from('resources')
-      .insert([resource])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error creating resource:', error);
-      return null;
-    }
-    return data;
+    const db = await getDb();
+    const creds = resource.credentials ? JSON.stringify(resource.credentials) : null;
+    await db.run(
+      'INSERT INTO resources (id, name, type, status, ip, engine, credentials, environment) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      resource.id, resource.name, resource.type, resource.status || 'Provisioning',
+      resource.ip || null, resource.engine || null, creds, resource.environment || null
+    );
+    // Update stats
+    await this.recalculateStats();
+    return resource;
   },
 
   async updateResource(id, updates) {
-    const { data, error } = await supabase
-      .from('resources')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error updating resource:', error);
-      return null;
-    }
-    return data;
+    const db = await getDb();
+    const sets = [];
+    const vals = [];
+    if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status); }
+    if (updates.ip !== undefined) { sets.push('ip = ?'); vals.push(updates.ip); }
+    if (updates.credentials !== undefined) { sets.push('credentials = ?'); vals.push(JSON.stringify(updates.credentials)); }
+    sets.push("updated_at = datetime('now')");
+    vals.push(id);
+    await db.run(`UPDATE resources SET ${sets.join(', ')} WHERE id = ?`, ...vals);
   },
 
   async deleteResource(id) {
-    const { error } = await supabase
-      .from('resources')
-      .delete()
-      .eq('id', id);
-    
-    if (error) {
-      console.error('Error deleting resource:', error);
-      return false;
-    }
-    return true;
+    const db = await getDb();
+    await db.run('DELETE FROM resources WHERE id = ?', id);
+    await this.recalculateStats();
   },
 
-  // Activity
-  async getActivity() {
-    const { data, error } = await supabase
-      .from('activity')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
-    
-    if (error) {
-      console.error('Error fetching activity:', error);
-      return [];
-    }
-    return data || [];
+  async recalculateStats() {
+    const db = await getDb();
+    const count = await db.get('SELECT COUNT(*) as cnt FROM resources WHERE status = ?', 'Active');
+    const total = count?.cnt || 0;
+    // Simple cost estimation
+    const cost = total * 45;
+    const costStr = `$${cost.toFixed(2)}`;
+    await db.run(
+      'UPDATE stats SET total_resources = ?, monthly_cost = ?, total_resources_delta = ? WHERE id = 1',
+      total, costStr, `+${total} deployed`
+    );
   },
 
-  async createActivity(activity) {
-    const { data, error } = await supabase
-      .from('activity')
-      .insert([activity])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error('Error creating activity:', error);
-      return null;
-    }
-    return data;
-  },
-
-  // Stats
   async getStats() {
-    const { data, error } = await supabase
-      .from('stats')
-      .select('*')
-      .eq('id', 1)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching stats:', error);
-      return {
-        totalResources: 0,
-        totalResourcesDelta: '+0 Since yesterday',
-        monthlyCost: '$0.00',
-        monthlyCostDelta: '0% projected',
-        systemHealth: '100%'
-      };
-    }
-    
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM stats WHERE id = 1');
+    return row || { total_resources: 0, total_resources_delta: '+0', monthly_cost: '$0.00', monthly_cost_delta: '0%', system_health: '100%' };
+  },
+
+  async getActivity() {
+    const db = await getDb();
+    return db.all('SELECT * FROM activity ORDER BY created_at DESC LIMIT 20');
+  },
+
+  async addActivity(activity) {
+    const db = await getDb();
+    await db.run(
+      'INSERT INTO activity (id, user_name, action, resource_name, time, type, status, icon, color_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      activity.id, activity.user, activity.action, activity.resourceName,
+      activity.time, activity.type, activity.status || null, activity.icon, activity.colorClass
+    );
+  },
+
+  async getDashboard() {
+    const stats = await this.getStats();
+    const activity = await this.getActivity();
     return {
-      totalResources: data.total_resources,
-      totalResourcesDelta: data.total_resources_delta,
-      monthlyCost: data.monthly_cost,
-      monthlyCostDelta: data.monthly_cost_delta,
-      systemHealth: data.system_health
+      stats: {
+        totalResources: stats.total_resources,
+        totalResourcesDelta: stats.total_resources_delta,
+        monthlyCost: stats.monthly_cost,
+        monthlyCostDelta: stats.monthly_cost_delta,
+        systemHealth: stats.system_health,
+      },
+      activity: activity.map(a => ({
+        id: a.id,
+        user: a.user_name,
+        action: a.action,
+        resourceName: a.resource_name,
+        time: a.time,
+        type: a.type,
+        status: a.status,
+        icon: a.icon,
+        colorClass: a.color_class,
+      })),
     };
   },
 
-  async incrementResourceCount() {
-    const { data: current } = await supabase
-      .from('stats')
-      .select('total_resources')
-      .eq('id', 1)
-      .single();
-    
-    const newCount = (current?.total_resources || 0) + 1;
-    
-    await supabase
-      .from('stats')
-      .update({ 
-        total_resources: newCount,
-        total_resources_delta: `+1 Since yesterday`
-      })
-      .eq('id', 1);
-  },
-
-  async decrementResourceCount() {
-    const { data: current } = await supabase
-      .from('stats')
-      .select('total_resources')
-      .eq('id', 1)
-      .single();
-    
-    const newCount = Math.max(0, (current?.total_resources || 0) - 1);
-    
-    await supabase
-      .from('stats')
-      .update({ total_resources: newCount })
-      .eq('id', 1);
-  },
-
-  // Service Catalog
   async getServiceCatalog() {
-    const { data, error } = await supabase
-      .from('service_catalog')
-      .select('*');
-    
-    if (error) {
-      console.error('Error fetching service catalog:', error);
-      return [];
-    }
-    
-    return (data || []).map(item => ({
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM service_catalog');
+    return rows.map(item => ({
       id: item.id,
       title: item.title,
       description: item.description,
       icon: item.icon,
       providerLogo: item.provider_logo,
-      tags: item.tags,
+      tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : (item.tags || []),
       color: item.color
     }));
   }
 };
 
-module.exports = { db, supabase };
+module.exports = { db: dbOps, initializeDatabase };
