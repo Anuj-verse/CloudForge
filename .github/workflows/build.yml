@@ -9,7 +9,7 @@ on:
 jobs:
   # ─── Frontend Check ───────────────────────────────────────────
   frontend:
-    name: Frontend Lint & Build
+    name: Frontend test & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,7 +36,7 @@ jobs:
 
   # ─── Backend Check ────────────────────────────────────────────
   backend:
-    name: Backend Check
+    name: Backend Check and test
     runs-on: ubuntu-latest
     defaults:
       run:
