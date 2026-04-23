@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  idp-frontend:
+    build: 
+      context: ./idp-frontend
+      dockerfile: Dockerfile
+    image: idp-frontend:latest
+    ports:
+      - "8080:80"
+    depends_on:
+      - idp-backend
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - idp-network
+
+  idp-backend:
+    build:
+      context: ./idp-backend
+      dockerfile: Dockerfile
+    image: idp-backend:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./terraform:/terraform:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - idp-network
+
+networks:
+  idp-network:
+    driver: bridge
