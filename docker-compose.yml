@@ -19,6 +19,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     image: idp-backend:latest
+    env_file:
+      - ./backend/.env
     ports:
       - "3000:3000"
     volumes:
