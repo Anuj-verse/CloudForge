@@ -1,187 +1,134 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } };
+const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } } };
 
 export function ActiveResources() {
   const [resources, setResources] = useState([]);
+  const [stats, setStats] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchResources = () => {
-    fetch('http://localhost:3000/api/resources')
-      .then(res => res.json())
-      .then(json => {
-        setResources(json.resources || []);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to load resources:", err);
-        setLoading(false);
-      });
+  const fetchAll = () => {
+    Promise.all([
+      fetch('http://localhost:3000/api/resources').then(r => r.json()),
+      fetch('http://localhost:3000/api/dashboard').then(r => r.json()),
+    ]).then(([res, dash]) => {
+      setResources(res.resources || []);
+      setStats(dash.stats);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchResources();
-    
-    // Poll to keep resources updated automatically, assuming provision happens 
-    const interval = setInterval(fetchResources, 5000);
+    fetchAll();
+    const interval = setInterval(fetchAll, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const handleDelete = (id) => {
     setDeletingId(id);
-    
-    // Optimistically update the UI to instantly start "destroying" or vanishing it
-    // Meanwhile tell Backend to delete it
     fetch(`http://localhost:3000/api/resources/${id}`, { method: 'DELETE' })
-      .then(() => {
-          setTimeout(() => {
-              setResources(prev => prev.filter(r => r.id !== id));
-              setDeletingId(null);
-          }, 600);
-      })
-      .catch((err) => {
-          console.error("Delete failed", err);
-          setDeletingId(null);
-          fetchResources(); // Revert
-      });
+      .then(() => setTimeout(() => { setResources(p => p.filter(r => r.id !== id)); setDeletingId(null); }, 500))
+      .catch(() => { setDeletingId(null); fetchAll(); });
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-  };
-
-  if (loading) return <div className="p-12 text-on-surface">Loading resources...</div>;
+  if (loading) return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="h-12 w-72 skeleton" />
+      <div className="h-[400px] skeleton rounded-2xl" />
+    </div>
+  );
 
   return (
-    <div className="max-w-7xl mx-auto w-full animate-in fade-in duration-500">
-      <header className="mb-12 flex items-end justify-between">
+    <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-6xl mx-auto">
+      <motion.header variants={fadeUp} className="mb-8 flex items-end justify-between">
         <div>
-          <h2 className="text-5xl font-black tracking-tighter text-on-surface mb-2 font-headline">Active Resources ({resources.length})</h2>
-          <p className="text-slate-500 font-label tracking-wide uppercase text-sm">Fleet Status: Operational • Region: us-east-1</p>
+          <h2 className="text-4xl font-black tracking-tight">
+            <span className="text-gradient-hero">Active Resources</span>
+            <span className="text-text-secondary ml-2 text-2xl font-bold">({resources.length})</span>
+          </h2>
+          <p className="text-text-tertiary text-sm mt-1">Fleet status: Operational • us-east-1</p>
         </div>
-        <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-surface-container-high rounded-lg font-label text-sm font-medium hover:bg-surface-container-highest transition-colors">
-            <span className="material-symbols-outlined text-sm">filter_list</span>
-            Filter
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary-container text-on-primary-container rounded-lg font-label text-sm font-bold hover:opacity-90 transition-opacity">
-            <span className="material-symbols-outlined text-sm">download</span>
-            Export List
-          </button>
-        </div>
-      </header>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          className="shimmer-sweep px-5 py-2.5 bg-accent-blue/10 text-accent-blue rounded-xl font-semibold text-sm border border-accent-blue/15 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-[16px]">download</span>
+          Export
+        </motion.button>
+      </motion.header>
 
-      {/* Resource Table Container */}
-      <div className="bg-surface-container rounded-xl overflow-hidden shadow-2xl">
-        <table className="w-full text-left border-collapse">
+      <motion.div variants={fadeUp} className="glass rounded-2xl overflow-hidden mb-8">
+        <table className="w-full text-left">
           <thead>
-            <tr className="bg-surface-container-high/50 border-b border-outline-variant/10">
-              <th className="px-6 py-4 font-label text-xs uppercase tracking-widest text-slate-400 font-semibold">Name</th>
-              <th className="px-6 py-4 font-label text-xs uppercase tracking-widest text-slate-400 font-semibold">Type</th>
-              <th className="px-6 py-4 font-label text-xs uppercase tracking-widest text-slate-400 font-semibold">Status</th>
-              <th className="px-6 py-4 font-label text-xs uppercase tracking-widest text-slate-400 font-semibold">IP/DNS Address</th>
-              <th className="px-6 py-4 font-label text-xs uppercase tracking-widest text-slate-400 font-semibold text-right">Actions</th>
+            <tr className="border-b border-border">
+              {['Name', 'Type', 'Status', 'Address', ''].map((h, i) => (
+                <th key={i} className={`px-5 py-3.5 text-xs font-semibold uppercase tracking-wider text-text-tertiary ${i === 4 ? 'text-right' : ''}`}>{h}</th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-outline-variant/5">
-            {resources.map((res) => (
-              <tr 
-                key={res.id} 
-                className={`hover:bg-surface-container-highest/30 transition-all duration-300 group ${deletingId === res.id ? 'opacity-30 grayscale pointer-events-none' : ''}`}
-              >
-                <td className="px-6 py-5">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-on-surface">{res.name}</span>
-                    <span className="text-xs text-slate-500 font-label">uuid: {res.id.split('-').slice(0, 2).join('-')}***</span>
-                  </div>
-                </td>
-                <td className="px-6 py-5">
-                  <span className="px-2 py-1 bg-surface-container-lowest border border-outline-variant/20 rounded text-[10px] font-bold font-label uppercase text-[#adc6ff]">
-                    {res.type}
-                  </span>
-                </td>
-                <td className="px-6 py-5">
-                  {res.status === 'Active' ? (
-                    <div className="flex items-center gap-2 text-tertiary">
-                      <span className="w-2 h-2 rounded-full bg-tertiary status-pulse"></span>
-                      <span className="text-xs font-bold font-label uppercase tracking-tight">Active</span>
+          <tbody>
+            <AnimatePresence>
+              {resources.map((res, idx) => (
+                <motion.tr key={res.id}
+                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, scaleY: 0, height: 0 }}
+                  transition={{ duration: 0.3, delay: idx * 0.03 }}
+                  className={`border-b border-border/50 hover:bg-surface-hover transition-colors group ${deletingId === res.id ? 'opacity-20 pointer-events-none' : ''}`}
+                >
+                  <td className="px-5 py-4">
+                    <span className="font-semibold text-text text-sm">{res.name}</span>
+                    <span className="block text-[11px] text-text-tertiary font-mono">{res.id.slice(0, 12)}...</span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className="px-2 py-0.5 bg-accent-blue/8 border border-accent-blue/15 rounded-lg text-[10px] font-bold uppercase text-accent-blue">{res.type}</span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${res.status === 'Active' ? 'bg-accent-green' : 'bg-accent-amber'} status-pulse`} />
+                      <span className="text-xs font-semibold uppercase">{res.status}</span>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-yellow-400">
-                      <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                      <span className="text-xs font-bold font-label uppercase tracking-tight">{res.status}</span>
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-5">
-                  <div className="flex items-center gap-2 group/copy">
-                    <code className="text-xs font-mono text-slate-300 bg-surface-container-lowest px-2 py-1 rounded">
-                      {res.ip}
-                    </code>
-                    <button 
-                      onClick={() => copyToClipboard(res.ip)}
-                      title="Copy to clipboard"
-                      className="opacity-0 group-hover/copy:opacity-100 p-1 hover:bg-surface-container-highest rounded transition-all"
-                    >
-                      <span className="material-symbols-outlined text-sm">content_copy</span>
-                    </button>
-                  </div>
-                </td>
-                <td className="px-6 py-5 text-right relative">
+                  </td>
+                  <td className="px-5 py-4">
+                    <code className="text-xs font-mono text-text-secondary bg-surface-hover px-2 py-1 rounded-lg">{res.ip}</code>
+                  </td>
+                  <td className="px-5 py-4 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                            className="px-3 py-1 bg-surface-container-highest hover:bg-surface-bright text-xs font-label uppercase text-on-surface rounded transition-colors"
-                        >
-                            Restart
-                        </button>
-                        <button 
-                            onClick={() => handleDelete(res.id)}
-                            className="px-3 py-1 bg-error/10 hover:bg-error/20 text-error text-xs font-label uppercase rounded transition-colors"
-                        >
-                            Destroy
-                        </button>
+                      <motion.button whileTap={{ scale: 0.95 }} className="px-3 py-1.5 text-xs font-semibold text-text-secondary bg-surface-hover rounded-lg hover:bg-surface-active">Restart</motion.button>
+                      <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleDelete(res.id)} className="px-3 py-1.5 text-xs font-semibold text-accent-red bg-accent-red/8 rounded-lg hover:bg-accent-red/15">Destroy</motion.button>
                     </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
             {resources.length === 0 && (
-                <tr><td colSpan="5" className="text-center py-8 text-on-surface-variant">No active resources found.</td></tr>
+              <tr><td colSpan="5" className="text-center py-16 text-text-tertiary">
+                <span className="material-symbols-outlined text-4xl mb-2 block text-text-tertiary/50">cloud_off</span>
+                No active resources
+              </td></tr>
             )}
           </tbody>
         </table>
-      </div>
+      </motion.div>
 
-      {/* Dashboard Stats Bento Grid */}
-      <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/10 hover:border-outline-variant/30 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <span className="material-symbols-outlined text-primary">bolt</span>
-            <span className="text-xs font-label uppercase text-slate-400">Total CPU</span>
-          </div>
-          <div className="text-3xl font-black text-on-surface">428 vCPUs</div>
-          <div className="w-full bg-surface-container-lowest h-1 rounded-full mt-4 overflow-hidden">
-            <div className="bg-primary h-full w-3/4 rounded-full"></div>
-          </div>
-        </div>
-        <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/10 hover:border-outline-variant/30 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <span className="material-symbols-outlined text-tertiary">account_balance_wallet</span>
-            <span className="text-xs font-label uppercase text-slate-400">Daily Spend</span>
-          </div>
-          <div className="text-3xl font-black text-on-surface">$1,240.50</div>
-          <p className="text-xs text-tertiary mt-2 flex items-center gap-1">
-            <span className="material-symbols-outlined text-xs">trending_up</span>
-            4.2% from yesterday
-          </p>
-        </div>
-        <div className="bg-surface-container p-6 rounded-xl border border-outline-variant/10 hover:border-outline-variant/30 transition-colors">
-          <div className="flex items-center justify-between mb-4">
-            <span className="material-symbols-outlined text-error">error</span>
-            <span className="text-xs font-label uppercase text-slate-400">Alerts</span>
-          </div>
-          <div className="text-3xl font-black text-on-surface">2 Critical</div>
-          <p className="text-xs text-slate-500 mt-2">Latency threshold exceeded in us-west-2</p>
-        </div>
-      </div>
-    </div>
+      {/* Bottom Stats */}
+      <motion.div variants={stagger} className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Total Active', value: `${stats?.totalResources || 0}`, icon: 'analytics', color: 'blue' },
+          { label: 'Monthly Spend', value: stats?.monthlyCost || '$0', icon: 'payments', color: 'purple' },
+          { label: 'System Health', value: stats?.systemHealth || '—', icon: 'health_and_safety', color: 'green' },
+        ].map((s, i) => (
+          <motion.div key={i} variants={fadeUp} whileHover={{ y: -2 }} className="glass glass-hover rounded-2xl p-5 relative overflow-hidden">
+            <div className={`absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent-${s.color}/15 to-transparent`} />
+            <div className="flex items-center justify-between mb-3">
+              <span className={`material-symbols-outlined text-accent-${s.color} text-[18px]`}>{s.icon}</span>
+              <span className="text-[10px] text-text-tertiary font-semibold uppercase tracking-wider">{s.label}</span>
+            </div>
+            <span className="text-2xl font-black text-text">{s.value}</span>
+          </motion.div>
+        ))}
+      </motion.div>
+    </motion.div>
   );
 }

@@ -7,6 +7,13 @@ async function validateAwsCredentials() {
     return new Promise((resolve) => {
         const aws = spawn('aws', ['sts', 'get-caller-identity', '--output', 'json']);
         
+        aws.on('error', (err) => {
+            resolve({
+                valid: false,
+                error: `AWS CLI error: ${err.message}`
+            });
+        });
+        
         let output = '';
         let error = '';
         
@@ -50,6 +57,13 @@ async function validateAwsCredentials() {
 async function validateTerraformInstalled() {
     return new Promise((resolve) => {
         const tf = spawn('terraform', ['version']);
+        
+        tf.on('error', (err) => {
+            resolve({
+                installed: false,
+                error: `Terraform error: ${err.message}`
+            });
+        });
         
         let output = '';
         

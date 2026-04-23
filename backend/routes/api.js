@@ -25,22 +25,8 @@ router.get('/validate-aws', async (req, res) => {
 // Dashboard routes
 router.get('/dashboard', async (req, res) => {
   try {
-    const stats = await db.getStats();
-    const activity = await db.getActivity();
-    res.json({
-      stats,
-      activity: activity.map(a => ({
-        id: a.id,
-        user: a.user_name,
-        action: a.action,
-        resourceName: a.resource_name,
-        time: a.time,
-        type: a.type,
-        status: a.status,
-        icon: a.icon,
-        colorClass: a.color_class
-      }))
-    });
+    const dashboard = await db.getDashboard();
+    res.json(dashboard);
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
@@ -137,16 +123,16 @@ router.delete('/resources/:id', async (req, res) => {
     runTerraformDestroy(id, resource.engine, resource);
     
     // Create activity
-    await db.createActivity({
+    await db.addActivity({
       id: `act-${Date.now()}`,
-      user_name: "Current User",
+      user: "Current User",
       action: "destroyed",
-      resource_name: `'${resource.name}'`,
+      resourceName: `'${resource.name}'`,
       time: "Just now",
       type: "Infrastructure",
       status: "TERMINATING",
       icon: "delete",
-      color_class: "danger"
+      colorClass: "error"
     });
     
     return res.status(202).json({ message: "Resource termination started" });
@@ -197,19 +183,19 @@ router.post('/provision', async (req, res) => {
     });
     
     // Increment resource count
-    await db.incrementResourceCount();
+    await db.recalculateStats();
     
     // Create activity
-    await db.createActivity({
+    await db.addActivity({
       id: `act-${Date.now()}`,
-      user_name: "Current User",
+      user: "Current User",
       action: "provisioned",
-      resource_name: `'${resourceName}'`,
+      resourceName: `'${resourceName}'`,
       time: "Just now",
       type: "Infrastructure",
       status: "PENDING",
       icon: "add_circle",
-      color_class: "primary"
+      colorClass: "primary"
     });
 
     return res.status(202).json({ 

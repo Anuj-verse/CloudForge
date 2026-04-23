@@ -376,19 +376,19 @@ async function runTerraformDestroy(provisionId, engine, resource) {
         if (code === 0) {
             // Delete resource from database
             await db.deleteResource(provisionId);
-            await db.decrementResourceCount();
+            await db.recalculateStats();
             
             // Create activity
-            await db.createActivity({
+            await db.addActivity({
                 id: `act-${Date.now()}`,
-                user_name: "Current User",
+                user: "Current User",
                 action: "destroyed",
-                resource_name: `'${resource.name}'`,
+                resourceName: `'${resource.name}'`,
                 time: "Just now",
                 type: "Infrastructure",
                 status: "DESTROYED",
                 icon: "delete",
-                color_class: "danger"
+                colorClass: "error"
             });
             
             console.log(`Resource ${provisionId} destroyed successfully`);
@@ -409,19 +409,19 @@ async function handleRollback(provisionId, engine, reason) {
     try {
         // Delete the failed resource from database
         await db.deleteResource(provisionId);
-        await db.decrementResourceCount();
+        await db.recalculateStats();
         
         // Create activity for failed provisioning
-        await db.createActivity({
+        await db.addActivity({
             id: `act-${Date.now()}`,
-            user_name: "System",
+            user: "System",
             action: "rollback",
-            resource_name: `Resource ${provisionId}`,
+            resourceName: `Resource ${provisionId}`,
             time: "Just now",
             type: "Infrastructure",
             status: "FAILED",
             icon: "error",
-            color_class: "danger"
+            colorClass: "error"
         });
     } catch (err) {
         console.error(`Rollback failed for ${provisionId}:`, err);

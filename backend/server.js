@@ -7,6 +7,7 @@ const { Server } = require('socket.io');
 
 const apiRoutes = require('./routes/api');
 const { runTerraform } = require('./services/terraformRunner');
+const { initializeDatabase } = require('./services/database');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,8 +46,15 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+
+// Initialize database then start server
+initializeDatabase().then(() => {
+  server.listen(PORT, () => {
     console.log(`IDP Backend running on port ${PORT}`);
     console.log(`REST API => http://localhost:${PORT}/api`);
     console.log(`Socket Stream Ready`);
+  });
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
 });

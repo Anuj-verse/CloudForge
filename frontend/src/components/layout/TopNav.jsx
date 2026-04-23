@@ -1,45 +1,66 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 export function TopNav() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
-    <header className="w-full sticky top-0 z-40 bg-[#0b1326]/80 backdrop-blur-md flex items-center justify-between px-8 py-3 border-b border-transparent bg-[#060e20]">
-      <div className="flex items-center gap-8">
-        <span className="text-[#adc6ff] font-black text-lg tracking-widest font-['Space_Grotesk']">ORCHESTRATOR</span>
-        <div className="relative group hidden md:block">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-500 text-sm">search</span>
-          <input 
-            type="text" 
-            placeholder="Search clusters..." 
-            className="bg-surface-container-low border-none focus:ring-1 focus:ring-primary text-sm rounded-lg pl-10 pr-4 py-1.5 w-64 transition-all text-on-surface"
-          />
-        </div>
+    <motion.header
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.5, delay: 0.1, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className={`sticky top-0 z-40 flex items-center justify-between px-8 lg:px-12 py-3 transition-all duration-300 ${
+        scrolled ? 'bg-bg/60 backdrop-blur-2xl border-b border-border' : 'bg-transparent border-b border-transparent'
+      }`}
+    >
+      {/* Left: Breadcrumb / Context */}
+      <div className="flex items-center gap-3">
+        <span className="text-text-tertiary text-sm font-mono">~/cloud-operator</span>
+        <span className="text-text-tertiary/30">/</span>
+        <span className="text-text-secondary text-sm">workspace</span>
       </div>
 
-      <div className="flex items-center gap-6">
-        <nav className="hidden md:flex items-center gap-6 font-['Inter'] text-sm font-medium font-['Space_Grotesk'] tracking-widest">
-          <a href="#" className="text-slate-400 hover:text-[#adc6ff] transition-opacity cursor-pointer">Infra</a>
-          <a href="#" className="text-[#adc6ff] border-b-2 border-[#adc6ff] pb-1 font-['Space_Grotesk'] transition-opacity cursor-pointer">Clusters</a>
-          <a href="#" className="text-slate-400 hover:text-[#adc6ff] transition-opacity cursor-pointer">Security</a>
-        </nav>
-
-        <div className="flex items-center gap-4 text-slate-400">
-          <button className="material-symbols-outlined hover:text-[#adc6ff] transition-all">dark_mode</button>
-          <button className="relative material-symbols-outlined hover:text-[#adc6ff] transition-all">
-            notifications
-            <span className="absolute top-0 right-0 w-2 h-2 bg-tertiary rounded-full border-2 border-background"></span>
-          </button>
-          <button className="material-symbols-outlined hover:text-[#adc6ff] transition-all">help_outline</button>
-          
-          <div className="h-8 w-8 ml-2 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center overflow-hidden cursor-pointer">
-            <img 
-              data-alt="User settings profile avatar" 
-              className="w-full h-full object-cover" 
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuApOG7FYD0KfGPewtLq-V3zUPQD_Rm2ExpwlAdZD2RcqEnS1lgZYm9oKA8fkqrgnhG6GIaRi4z4MJETih_FcuQmejcgK0M2NtiAt1IANBDIRDS21NTJQW-BiltJ8nGRsNBBfDjV4rFKAy3omI4Nqen0N8Dq1SamIeZo-4SrRUMGA5B3Wx1fkHQjEGxcfN_eVgWMTFjUsDRIGWIaKE9WyzchcZvu5d8YKJ1JHByy6MwMXiRT00N90zkEqMNf0UgGZKTjx8fiN7UuDu2s" 
-              alt="Avatar"
-            />
-          </div>
+      {/* Center: Command Bar */}
+      <motion.button
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        className="flex items-center gap-3 px-4 py-2 glass rounded-2xl min-w-[320px] group"
+      >
+        <span className="material-symbols-outlined text-text-tertiary text-[18px]">search</span>
+        <span className="text-text-tertiary text-sm flex-1 text-left">Search or run command...</span>
+        <div className="flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 bg-surface-hover rounded-md text-[10px] text-text-tertiary font-mono border border-border">⌘</kbd>
+          <kbd className="px-1.5 py-0.5 bg-surface-hover rounded-md text-[10px] text-text-tertiary font-mono border border-border">K</kbd>
         </div>
+      </motion.button>
+
+      {/* Right: Actions */}
+      <div className="flex items-center gap-2">
+        {['notifications', 'help_outline'].map(icon => (
+          <motion.button
+            key={icon}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-surface-hover transition-colors text-text-tertiary hover:text-text-secondary"
+          >
+            <span className="material-symbols-outlined text-[20px]">{icon}</span>
+            {icon === 'notifications' && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 1 }}
+                className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent-green rounded-full"
+              />
+            )}
+          </motion.button>
+        ))}
       </div>
-    </header>
+    </motion.header>
   );
 }
